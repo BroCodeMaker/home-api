@@ -15,18 +15,25 @@ def _hmac_sha256(secret: str, msg: str) -> str:
     return hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest().upper()
 
 
+def _build_string_to_sign(method: str, path: str, body: str = "") -> str:
+    content_hash = hashlib.sha256(body.encode()).hexdigest()
+    return method.upper() + "\n" + content_hash + "\n\n" + path
+
+
 def _sign_token(client_id: str, client_secret: str, t: str) -> str:
-    # Token request: simple signing (no URL, no body)
-    return _hmac_sha256(client_secret, client_id + t)
+    # New Tuya signing format: includes URL even for token request
+    nonce = ""
+    str_to_sign = _build_string_to_sign("GET", "/v1.0/token?grant_type=1")
+    full = client_id + t + nonce + str_to_sign
+    return _hmac_sha256(client_secret, full)
 
 
 def _sign_request(client_id: str, client_secret: str, access_token: str, t: str,
                   method: str, path: str, body: str = "") -> str:
-    # API request: full signing with URL and body hash
-    content_hash = hashlib.sha256(body.encode()).hexdigest()
-    str_url = method.upper() + "\n" + content_hash + "\n\n" + path
-    str_to_sign = client_id + access_token + t + str_url
-    return _hmac_sha256(client_secret, str_to_sign)
+    nonce = ""
+    str_to_sign = _build_string_to_sign(method, path, body)
+    full = client_id + access_token + t + nonce + str_to_sign
+    return _hmac_sha256(client_secret, full)
 
 
 def _get_token() -> str:
