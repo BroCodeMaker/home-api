@@ -1,20 +1,32 @@
 import hashlib
 import hmac
 import time
+import json
 import requests
 import os
 from typing import Optional
 
-TUYA_BASE_URL = "https://openapi.tuyaeu.com"  # EU region; change to tuyaus.com for US
+TUYA_BASE_URL = "https://openapi.tuyaeu.com"  # EU region
 
 _token_cache: dict = {"token": None, "expires_at": 0}
 
 
-def _sign(client_id: str, client_secret: str, t: str, access_token: str = "", method: str = "GET", path: str = "", body: str = "") -> str:
-    str_to_sign = client_id + access_token + t
+def _hmac_sha256(secret: str, msg: str) -> str:
+    return hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest().upper()
+
+
+def _sign_token(client_id: str, client_secret: str, t: str) -> str:
+    # Token request: simple signing (no URL, no body)
+    return _hmac_sha256(client_secret, client_id + t)
+
+
+def _sign_request(client_id: str, client_secret: str, access_token: str, t: str,
+                  method: str, path: str, body: str = "") -> str:
+    # API request: full signing with URL and body hash
     content_hash = hashlib.sha256(body.encode()).hexdigest()
-    str_to_sign += "\n" + method.upper() + "\n" + content_hash + "\n\n" + path
-    return hmac.new(client_secret.encode(), str_to_sign.encode(), hashlib.sha256).hexdigest().upper()
+    str_url = method.upper() + "\n" + content_hash + "\n\n" + path
+    str_to_sign = client_id + access_token + t + str_url
+    return _hmac_sha256(client_secret, str_to_sign)
 
 
 def _get_token() -> str:
@@ -26,7 +38,7 @@ def _get_token() -> str:
         return _token_cache["token"]
 
     t = str(int(now * 1000))
-    sign = _sign(client_id, client_secret, t, path="/v1.0/token?grant_type=1")
+    sign = _sign_token(client_id, client_secret, t)
 
     headers = {
         "client_id": client_id,
@@ -51,9 +63,8 @@ def _tuya_request(method: str, path: str, body: dict = None) -> dict:
     token = _get_token()
 
     t = str(int(time.time() * 1000))
-    import json
     body_str = json.dumps(body) if body else ""
-    sign = _sign(client_id, client_secret, t, access_token=token, method=method, path=path, body=body_str)
+    sign = _sign_request(client_id, client_secret, token, t, method, path, body_str)
 
     headers = {
         "client_id": client_id,
