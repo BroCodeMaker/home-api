@@ -59,6 +59,21 @@ def tuya_status(device_id: str, _=Depends(verify_api_key)):
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
 
+@app.get("/api/tuya/cmd")
+def tuya_cmd(device_id: str, power: Optional[bool] = None, brightness: Optional[int] = None, key: str = "", _=None):
+    # GET endpoint for Garmin watch (query params, API key in URL)
+    expected = os.environ.get("API_KEY")
+    if not expected or key != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    try:
+        result = tuya_service.control_device(device_id, power, brightness)
+        return {"success": True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @app.post("/api/tuya/scene/{scene_name}")
 def tuya_scene(scene_name: str, _=Depends(verify_api_key)):
     # Placeholder for future scene support
