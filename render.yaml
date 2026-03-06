@@ -13,3 +13,11 @@ services:
       - key: API_KEY
         sync: false
     healthCheckPath: /health
+
+  - type: cron
+    name: keepalive
+    runtime: python
+    pythonVersion: "3.11.10"
+    schedule: "*/10 * * * *"
+    buildCommand: pip install requests
+    startCommand: python -c "import requests; r=requests.get('https://home-api-fhvj.onrender.com/health'); print(r.status_code)"
