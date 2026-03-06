@@ -1,10 +1,13 @@
 import os
-from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi import FastAPI, HTTPException, Security, Depends, Request
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
+from datetime import datetime
 import tuya_service
+
+_request_log = []  # in-memory log of last 10 requests
 
 load_dotenv()
 
@@ -60,18 +63,31 @@ def tuya_status(device_id: str, _=Depends(verify_api_key)):
 
 
 @app.get("/api/tuya/cmd")
-def tuya_cmd(device_id: str, power: Optional[bool] = None, brightness: Optional[int] = None, key: str = "", _=None):
+def tuya_cmd(request: Request, device_id: str = "", power: Optional[bool] = None, brightness: Optional[int] = None, key: str = ""):
     # GET endpoint for Garmin watch (query params, API key in URL)
+    entry = {"time": datetime.utcnow().isoformat(), "ip": request.client.host,
+             "device_id": device_id, "power": power, "brightness": brightness, "auth": key == os.environ.get("API_KEY")}
+    _request_log.append(entry)
+    if len(_request_log) > 10:
+        _request_log.pop(0)
+
     expected = os.environ.get("API_KEY")
     if not expected or key != expected:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id required")
     try:
-        result = tuya_service.control_device(device_id, power, brightness)
+        tuya_service.control_device(device_id, power, brightness)
         return {"success": True}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/debug/requests")
+def debug_requests():
+    return {"last_requests": _request_log}
 
 
 @app.post("/api/tuya/scene/{scene_name}")
